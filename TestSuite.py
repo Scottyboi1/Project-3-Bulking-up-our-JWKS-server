@@ -1,9 +1,10 @@
 import unittest
 import requests
+import sqlite3
 
 class TestAuthEndpoint(unittest.TestCase):
     def setUp(self):
-        self.base_url = "http://localhost:8080" #Tests our local host
+        self.base_url = "http://localhost:8080"  # Tests our local host
         self.username = "userABC"
         self.password = "password123"
         self.expired_query = "?expired=true"
@@ -34,6 +35,25 @@ class TestAuthEndpoint(unittest.TestCase):
         data = {"username": "invalid_user", "password": "invalid_password"}
         response = requests.post(f"{self.base_url}/auth", json=data)
         self.assertTrue(response.status_code != 401)
+
+    def test_user_registration_capability(self):
+        # Check if the server has user registration capabilities
+        response = requests.get(f"{self.base_url}/register")
+        self.assertEqual(response.status_code, 501)  # Assuming 405 Method Not Allowed for registration endpoint
+
+    def test_authentication_logging(self):
+        # Check if authentication requests are logged
+        data = {"username": self.username, "password": self.password}
+        response = requests.post(f"{self.base_url}/auth", json=data)
+        self.assertEqual(response.status_code, 200)
+
+        # Check if the authentication request is logged in the database
+        conn = sqlite3.connect("totally_not_my_privateKeys.db")  # Use the correct path to your database
+        query = "SELECT * FROM auth_logs WHERE user_id = ?"
+        result = conn.execute(query, (1,)).fetchone()  # Adjust user_id as per your implementation
+        conn.close()
+
+        self.assertIsNotNone(result)
 
     def tearDown(self):
         pass
