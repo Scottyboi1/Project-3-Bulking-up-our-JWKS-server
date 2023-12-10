@@ -7,15 +7,33 @@ import base64
 import json
 import jwt
 import datetime
+import os
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+from datetime import timedelta
+
+def get_encryption_key():
+    key = os.environ.get("ENCRYPTION_KEY")
+
+    if key is None:
+        # If the key doesn't exist, generate a new one
+        key = os.urandom(32)
+        key_str = base64.urlsafe_b64encode(key).decode('utf-8')
+
+        # Set the environment variable with the string representation of the key
+        os.environ["ENCRYPTION_KEY"] = key_str
+
+    # Convert the string representation back to bytes before returning
+    return base64.urlsafe_b64decode(os.environ["ENCRYPTION_KEY"])
 
 hostName = "localhost"
 serverPort = 8080
 
-#Creates the SQLite database file
+# Creates the SQLite database file
 database_file = "totally_not_my_privateKeys.db"
 conn = sqlite3.connect(database_file)
 
-#Define the table schema for storing private keys
+# Define the table schema for storing private keys
 create_table_sql = """
 CREATE TABLE IF NOT EXISTS keys(
     kid INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24,46 +42,44 @@ CREATE TABLE IF NOT EXISTS keys(
 )
 """
 
-#Executes the SQL to create the table
+# Executes the SQL to create the table
 conn.execute(create_table_sql)
 conn.commit()
 
-def int_to_base64(value):
-    """Convert an integer to a Base64URL-encoded string"""
-    value_hex = format(value, 'x')
-    if len(value_hex) % 2 == 1:
-        value_hex = '0' + value_hex
-    value_bytes = bytes.fromhex(value_hex)
-    encoded = base64.urlsafe_b64encode(value_bytes).rstrip(b'=')
-    return encoded.decode('utf-8')
-
-def store_private_key(key, expiration_time):
-    """Serialize and store private keys in the database"""
-    pem = key.private_bytes(
+# Add a function to encrypt private keys
+def encrypt_private_key(key, expiration_time):
+    encryption_key = get_encryption_key()
+    cipher = Cipher(algorithms.AES(encryption_key), modes.CFB(b'\0'*16), backend=default_backend())
+    cipher_text = cipher.encryptor().update(key.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PrivateFormat.TraditionalOpenSSL,
         encryption_algorithm=serialization.NoEncryption()
-    )
+    ))
     
-    #Insert the serialized key into database
+    # Insert the encrypted key into the database
     insert_sql = "INSERT INTO keys (key, exp) VALUES (?, ?)"
-    conn.execute(insert_sql, (pem, expiration_time))
+    conn.execute(insert_sql, (cipher_text, expiration_time))
     conn.commit()
 
-#Gets RSA Key pair
+# Update the existing store_private_key function call
 private_key = rsa.generate_private_key(
     public_exponent=65537,
     key_size=2048,
 )
 expiration_time = datetime.datetime.utcnow() + datetime.timedelta(hours=1)
-store_private_key(private_key, expiration_time)
+encrypt_private_key(private_key, expiration_time)
 
 expired_key = rsa.generate_private_key(
     public_exponent=65537,
     key_size=2048,
 )
 expiration_time = datetime.datetime.utcnow() - datetime.timedelta(hours=1)
-store_private_key(expired_key, expiration_time)
+encrypt_private_key(expired_key, expiration_time)
+
+# Add a new library: pip install passlib
+
+def generate_secure_password():
+    return str(uuid.uuid4())
 
 class MyServer(BaseHTTPRequestHandler):
     def do_PUT(self):
@@ -89,6 +105,7 @@ class MyServer(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed_path = urlparse(self.path)
         params = parse_qs(parsed_path.query)
+
         if parsed_path.path == "/auth":
             cursor = conn.execute("SELECT key FROM keys WHERE exp > ? ORDER BY kid DESC LIMIT 1", (int(datetime.datetime.utcnow().timestamp()),))
             row = cursor.fetchone()
@@ -109,9 +126,42 @@ class MyServer(BaseHTTPRequestHandler):
                 headers["kid"] = "expiredKID"
                 token_payload["exp"] = datetime.datetime.utcnow() - datetime.timedelta(hours=1)
             encoded_jwt = jwt.encode(token_payload, private_key, algorithm="RS256", headers=headers)
+
+            # Log authentication request
+            request_ip = self.client_address[0]
+            user_id = None  # Replace this with actual user ID if available
+            log_sql = "INSERT INTO auth_logs (request_ip, user_id) VALUES (?, ?)"
+            conn.execute(log_sql, (request_ip, user_id))
+            conn.commit()
+
             self.send_response(200)
             self.end_headers()
             self.wfile.write(encoded_jwt.encode('utf-8'))
+            return
+
+        elif parsed_path.path == "/register":
+            # Parse request body
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            user_data = json.loads(post_data.decode('utf-8'))
+
+            # Generate a secure password
+            generated_password = generate_secure_password()
+
+            # Hash the password using Argon2
+            hashed_password = argon2.hash(generated_password)
+
+            # Store user details and hashed password in the users table
+            insert_user_sql = "INSERT INTO users (username, password_hash, email) VALUES (?, ?, ?)"
+            conn.execute(insert_user_sql, (user_data['username'], hashed_password, user_data['email']))
+            conn.commit()
+
+            # Return the generated password to the user
+            response_data = {"password": generated_password}
+            self.send_response(201)  # Created
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(response_data).encode('utf-8'))
             return
 
         self.send_response(405)
@@ -150,7 +200,6 @@ class MyServer(BaseHTTPRequestHandler):
         self.end_headers()
         return
 
-#Close the database connection when the server is shut down
 def close_database_connection():
     conn.close()
 
