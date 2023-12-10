@@ -65,7 +65,8 @@ class MyServer(BaseHTTPRequestHandler):
     def do_HEAD(self):
         self.send_response(405)
         self.end_headers()
-
+        
+    #@limiter.limit("10 per second", key_func=get_remote_address)
     def do_POST(self):
         parsed_path = urlparse(self.path)
         params = parse_qs(parsed_path.query)
