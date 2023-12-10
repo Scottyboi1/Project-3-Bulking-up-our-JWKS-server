@@ -17,22 +17,22 @@ from flask_limiter.util import get_remote_address
 from passlib.hash import argon2
 from argon2 import PasswordHasher
 
-# Fetch encryption key from environment variable
+#Get encryption key from environment variable
 def get_encryption_key():
     key = os.environ.get("NOT_MY_KEY")
 
     if key is None:
-        # If the key doesn't exist, generate a new one
+        #Generate a new key if it doesn't exist
         key = os.urandom(32)
         key_str = base64.urlsafe_b64encode(key).decode('utf-8')
 
-        # Set the environment variable with the string representation of the key
+        #Making the key a string variable
         os.environ["NOT_MY_KEY"] = key_str
 
-    # Convert the string representation back to bytes before returning
+    #Making the key into bytes
     return base64.urlsafe_b64decode(os.environ["NOT_MY_KEY"])
 
-# Encrypt private key and store in the database
+#Encrypt private key and store in the database
 def encrypt_private_key(key, expiration_time, encryption_key):
     cipher = Cipher(algorithms.AES(encryption_key), modes.CFB(b'\0'*16), backend=default_backend())
     cipher_text = cipher.encryptor().update(key.private_bytes(
@@ -66,7 +66,7 @@ class MyServer(BaseHTTPRequestHandler):
         self.send_response(405)
         self.end_headers()
         
-    #@limiter.limit("10 per second", key_func=get_remote_address)
+    #@limiter.limit("10 per second", key_func=get_remote_address) //could not get it to work
     def do_POST(self):
         parsed_path = urlparse(self.path)
         params = parse_qs(parsed_path.query)
@@ -131,14 +131,14 @@ class MyServer(BaseHTTPRequestHandler):
         conn.commit()
 
     def get_user_id(self):
-        return 1  # Placeholder value, replace it with actual logic
+        return 1
 
 
-# Creates the SQLite database file
+#Creates the SQLite database file
 database_file = "totally_not_my_privateKeys.db"
 conn = sqlite3.connect(database_file)
 
-# Define the table schema for storing private keys
+#Define the table schema for storing private keys
 create_table_keys_sql = """
 CREATE TABLE IF NOT EXISTS keys (
     kid INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -147,7 +147,7 @@ CREATE TABLE IF NOT EXISTS keys (
 )
 """
 
-# Define the table schema for storing users
+#Define the table schema for storing users
 create_table_users_sql = """
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -159,7 +159,7 @@ CREATE TABLE IF NOT EXISTS users (
 )
 """
 
-# Define the table schema for logging authentication requests
+#Define the table schema for logging authentication requests
 create_table_auth_logs_sql = """
 CREATE TABLE IF NOT EXISTS auth_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -170,13 +170,13 @@ CREATE TABLE IF NOT EXISTS auth_logs (
 )
 """
 
-# Executes the SQL to create the tables
+#SQL to create tables
 conn.execute(create_table_keys_sql)
 conn.execute(create_table_users_sql)
 conn.execute(create_table_auth_logs_sql)
 conn.commit()
 
-# Update the existing store_private_key function call
+#Update the existing store_private_key function call
 private_key = rsa.generate_private_key(
     public_exponent=65537,
     key_size=2048,
@@ -195,12 +195,10 @@ app = Flask(__name__)
 limiter = Limiter(app)
 ph = PasswordHasher()
 
-# Example Flask route
 @app.route('/example')
 def example_route():
     return 'Hello, this is an example route!'
 
-# Example Flask configuration
 app.config['DEBUG'] = True
 
 webServer = HTTPServer(("localhost", 8080), MyServer)
