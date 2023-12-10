@@ -4,7 +4,7 @@ import sqlite3
 
 class TestAuthEndpoint(unittest.TestCase):
     def setUp(self):
-        self.base_url = "http://localhost:8080"  # Tests our local host
+        self.base_url = "http://localhost:8080"
         self.username = "userABC"
         self.password = "password123"
         self.expired_query = "?expired=true"
@@ -35,22 +35,20 @@ class TestAuthEndpoint(unittest.TestCase):
         data = {"username": "invalid_user", "password": "invalid_password"}
         response = requests.post(f"{self.base_url}/auth", json=data)
         self.assertTrue(response.status_code != 401)
-
+    #Checks if the server has user registration capabilities
     def test_user_registration_capability(self):
-        # Check if the server has user registration capabilities
         response = requests.get(f"{self.base_url}/register")
-        self.assertEqual(response.status_code, 501)  # Assuming 405 Method Not Allowed for registration endpoint
-
+        self.assertEqual(response.status_code, 501)
+    #Check if authentication requests are logged
     def test_authentication_logging(self):
-        # Check if authentication requests are logged
         data = {"username": self.username, "password": self.password}
         response = requests.post(f"{self.base_url}/auth", json=data)
         self.assertEqual(response.status_code, 200)
 
-        # Check if the authentication request is logged in the database
-        conn = sqlite3.connect("totally_not_my_privateKeys.db")  # Use the correct path to your database
+        #Checks if the authentication request is logged in the database
+        conn = sqlite3.connect("totally_not_my_privateKeys.db")
         query = "SELECT * FROM auth_logs WHERE user_id = ?"
-        result = conn.execute(query, (1,)).fetchone()  # Adjust user_id as per your implementation
+        result = conn.execute(query, (1,)).fetchone()
         conn.close()
 
         self.assertIsNotNone(result)
@@ -62,6 +60,6 @@ if __name__ == '__main__':
     test_suite = unittest.TestLoader().loadTestsFromTestCase(TestAuthEndpoint)
     test_runner = unittest.TextTestRunner(verbosity=2)
     result = test_runner.run(test_suite)
-    # Outputs tests passed as a percent
+    #Outputs tests passed as a percent
     passed_percentage = (result.testsRun - len(result.errors) - len(result.failures)) / result.testsRun * 100
     print(f"Passed {round(passed_percentage, 2)}% of test cases.")
