@@ -11,4 +11,4 @@ To Run:
 7. Run the command, start gradebot project3
 8. The table will be displayed
 
-For parts of this assignments I did use ChatGPT. Specifically fixing my handle_registration function to register users.
+For parts of this assignments I did use ChatGPT. Specifically fixing my handle_registration function to register users and how to use AES encryption.
