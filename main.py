@@ -16,8 +16,6 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from passlib.hash import argon2
 from argon2 import PasswordHasher
-import string
-import secrets
 
 # Fetch encryption key from environment variable
 def get_encryption_key():
@@ -47,11 +45,9 @@ def encrypt_private_key(key, expiration_time, encryption_key):
     conn.execute(insert_sql, (cipher_text, int(expiration_time.timestamp())))
     conn.commit()
 
-# Generate a secure password
-def generate_secure_password(length=12):
-    characters = string.ascii_letters + string.digits + string.punctuation
-    secure_password = ''.join(secrets.choice(characters) for _ in range(length))
-    return secure_password
+def generate_secure_password():
+    return str(uuid.uuid4())
+
 
 class MyServer(BaseHTTPRequestHandler):
     def do_PUT(self):
