@@ -16,6 +16,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from passlib.hash import argon2
 from argon2 import PasswordHasher
+import time
 
 #Get encryption key from environment variable
 def get_encryption_key():
@@ -48,6 +49,26 @@ def encrypt_private_key(key, expiration_time, encryption_key):
 def generate_secure_password():
     return str(uuid.uuid4())
 
+#Rate limiter class to limit the requests to 10
+class RateLimiter:
+    def __init__(self, max_requests, per_seconds):
+        self.max_requests = max_requests
+        self.per_seconds = per_seconds
+        self.request_times = {}
+    def allow_request(self, ip):
+        current_time = time.time()
+        if ip not in self.request_times:
+            self.request_times[ip] = [current_time]
+            return True
+        else:
+            self.request_times[ip] = [t for t in self.request_times[ip] if current_time - t < self.per_seconds]
+            if len(self.request_times[ip]) < self.max_requests:
+                self.request_times[ip].append(current_time)
+                return True
+            else:
+                return False
+
+rate_limiter = RateLimiter(max_requests=10, per_seconds=1)
 
 class MyServer(BaseHTTPRequestHandler):
     def do_PUT(self):
@@ -66,7 +87,6 @@ class MyServer(BaseHTTPRequestHandler):
         self.send_response(405)
         self.end_headers()
         
-    #@limiter.limit("10 per second", key_func=get_remote_address) //could not get it to work
     def do_POST(self):
         parsed_path = urlparse(self.path)
         params = parse_qs(parsed_path.query)
@@ -82,6 +102,11 @@ class MyServer(BaseHTTPRequestHandler):
                 "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)
             }
 
+            if not rate_limiter.allow_request(self.log_auth_request()):
+                self.send_response(429, "Too Many Requests")
+                self.end_headers()
+                return
+            
             if 'expired' in params:
                 headers["kid"] = "expiredKID"
                 token_payload["exp"] = datetime.datetime.utcnow() - datetime.timedelta(hours=1)
